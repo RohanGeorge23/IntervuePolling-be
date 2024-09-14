@@ -17,10 +17,11 @@ app.use(express.json());
 interface Poll {
   question: string;
   options: string[];
-  responses: Record<string, string>; // student_id -> selected_option
+  responses: Record<string, string>; 
 }
 
 let activePoll: Poll | null = null;
+let studentsAnswered = new Set<string>(); 
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Polling system is running');
@@ -28,7 +29,7 @@ app.get('/', (req: Request, res: Response) => {
 
 // Route to create a new poll (Teacher)
 app.post('/create-poll', (req: Request, res: Response) => {
-  console.log('req received')
+  console.log('Poll creation request received');
   const { question, options } = req.body;
 
   // If there's an active poll, close it before creating a new one
@@ -52,8 +53,15 @@ io.on('connection', (socket) => {
 
   // Send the active poll to a newly connected student
   if (activePoll) {
+    console.log('Emitting active poll to newly connected student:', activePoll);
     socket.emit('new-poll', activePoll);
   }
+
+  socket.on('request-poll', () => {
+    if (activePoll) {
+      socket.emit('new-poll', activePoll);
+    }
+  });
 
   // Handle answer submission by a student
   socket.on('submit-answer', (data: { studentId: string, selectedOption: string }) => {
@@ -63,16 +71,19 @@ io.on('connection', (socket) => {
       // Save student's response
       activePoll.responses[studentId] = selectedOption;
 
-      // Broadcast updated results to all connected clients
+      // Emit updated poll results
       io.emit('poll-results', activePoll.responses);
     }
   });
 
+  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('A user disconnected', socket.id);
   });
 });
 
-server.listen(3000, () => {
-  console.log('Server is running on port 3000');
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
